@@ -1,0 +1,53 @@
+# .github/workflows/build.yml
+
+name: Build and Publish Image
+
+# This workflow runs on pushes to the main branch and when a new release is created.
+on:
+  push:
+    branches:
+      - 'main'
+  release:
+    types: [created]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    # We need to grant permissions for the GITHUB_TOKEN to write packages.
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # 1. Check out the repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Log in to the GitHub Container Registry (GHCR)
+      # This uses a special GITHUB_TOKEN, so you don't need to store secrets.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 3. Extract metadata (tags and labels) for the Docker image
+      # This step creates tags based on the event that triggered the workflow.
+      # - For a push to 'main', it will create the 'latest' tag.
+      # - For a new release (e.g., v1.2.0), it will create a tag like 'v1.2.0'.
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+
+      # 4. Build and push the Docker image to GHCR
+      # This step uses the Dockerfile in your repository and the tags from the previous step.
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
