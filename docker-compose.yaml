@@ -1,0 +1,133 @@
+
+networks:
+  proxy:
+    external: true
+  internal:
+    external: true
+
+volumes:
+  pg_data:
+  redis_data:
+  n8n_data:
+
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    command:
+      # Docker provider
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=proxy
+      # Logs
+      - --accesslog=true
+      - --log.level=ERROR
+      # EntryPoints
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # HTTP -> HTTPS redirect
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      # Let's Encrypt (HTTP-01)
+      - --certificatesresolvers.le.acme.email=${EMAIL_USER}
+      - --certificatesresolvers.le.acme.storage=/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      # Dashboard
+      - --api.dashboard=true
+      - --api.insecure=false
+    labels:
+      - traefik.enable=true
+#      - traefik.http.serversTransports.n8n-transport.forwardingTimeouts.dialTimeout=60s
+#      - traefik.http.serversTransports.n8n-transport.forwardingTimeouts.responseHeaderTimeout=300s
+#      - traefik.http.serversTransports.n8n-transport.forwardingTimeouts.idleConnTimeout=300s
+      # Secure dashboard on traefik.samuraiheart.web.id
+      - traefik.http.routers.traefik.rule=Host(`${DOMAIN_TRAEFIK}`)
+      - traefik.http.routers.traefik.entrypoints=websecure
+      - traefik.http.routers.traefik.tls.certresolver=le
+      - traefik.http.routers.traefik.service=api@internal
+      # Basic Auth (replace with your bcrypt hash; double the $ signs)
+      - traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_DASHBOARD_PWD}
+      # Apply only Basic Auth by default
+      - traefik.http.routers.traefik.middlewares=traefik-auth@docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./acme.json:/acme.json
+    networks:
+      - proxy
+
+  postgres:
+    image: postgres:15
+    container_name: n8n-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: n8n
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    container_name: n8n-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+
+  n8n:
+    image: n8n-ytdlp
+    container_name: n8n
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      N8N_DEFAULT_BINARY_DATA_MODE: filesystem
+      # Database
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: n8n
+      DB_POSTGRESDB_PASSWORD: changeme
+      # Redis for queues
+      QUEUE_BULL_REDIS_HOST: redis
+      QUEUE_BULL_REDIS_PORT: 6379
+      # Public URL (for webhooks, OAuth)
+      N8N_HOST: ${DOMAIN_N8N}
+      N8N_PROTOCOL: https
+      N8N_PORT: 5678
+      WEBHOOK_URL: https://${DOMAIN_N8N}
+      # Timezone
+      TZ: ${TIMEZONE}
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./${YT_COOKIES}:/home/node/coockies-yt.txt
+      - ./projectWork:/home/node/project
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.n8n.rule=Host(`${DOMAIN_N8N}`)
+      - traefik.http.routers.n8n.entrypoints=websecure
+      - traefik.http.routers.n8n.tls.certresolver=le
+      - traefik.http.routers.n8n.service=n8n
+      - traefik.http.services.n8n.loadbalancer.server.port=5678
+      # --- FIX IS HERE ---
+  #      - traefik.http.services.n8n.loadbalancer.serversTransport=n8n-transport@docker
+      - traefik.docker.network=proxy
+      # Healthcheck (optional)
+      - traefik.http.services.n8n.loadbalancer.healthcheck.path=/ # or /rest/healthz
+      - traefik.http.services.n8n.loadbalancer.healthcheck.interval=10s
+      - traefik.http.services.n8n.loadbalancer.healthcheck.timeout=3s
+    networks:
+      - proxy
+      - internal
