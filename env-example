@@ -1,0 +1,33 @@
+# .env
+
+# ----------------------------------------------------
+# Traefik & Let's Encrypt Configuration
+# ----------------------------------------------------
+
+# The email address for your Let's Encrypt SSL certificate.
+EMAIL_USER=your-email@example.com
+
+# The domain you will use to access the Traefik dashboard.
+DOMAIN_TRAEFIK=traefik.your-domain.com
+
+# The password for the Traefik dashboard.
+# IMPORTANT: This must be a bcrypt hash. You can generate one using htpasswd.
+# Remember to double the dollar signs ($$) in the hash.
+# Example for password "admin": $$2y$$05$$...
+TRAEFIK_DASHBOARD_PWD=$$2y$$05$$YourBcryptPasswordHashHere
+
+# ----------------------------------------------------
+# n8n Configuration
+# ----------------------------------------------------
+
+# The domain you will use to access your n8n instance.
+DOMAIN_N8N=n8n.your-domain.com
+
+# The timezone for the n8n container (e.g., America/New_York, Europe/Berlin).
+TIMEZONE=Asia/Jakarta
+
+# A more general timezone setting used by some nodes.
+GENERIC_TIMEZONE=Asia/Jakarta
+
+# The name of the YouTube cookies file located in your project directory.
+YT_COOKIES=cookies-yt.txt
